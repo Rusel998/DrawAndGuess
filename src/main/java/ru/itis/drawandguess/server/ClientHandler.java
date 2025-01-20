@@ -2,44 +2,82 @@ package ru.itis.drawandguess.server;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.UUID;
+import java.util.*;
 
 public class ClientHandler implements Runnable {
-    private final Socket clientSocket;
-    private final Server server;
-    private String clientId;
+    private Socket socket;
+    private PrintWriter out;
+    private BufferedReader in;
+    private String nickname;
+    private boolean ready = false;
+    private List<ClientHandler> clients;
 
-    public ClientHandler(Socket clientSocket, Server server) {
-        this.clientSocket = clientSocket;
-        this.server = server;
-        this.clientId = UUID.randomUUID().toString(); // Уникальный идентификатор клиента
+    public ClientHandler(Socket socket, List<ClientHandler> clients) {
+        this.socket = socket;
+        this.clients = clients;
     }
 
     @Override
     public void run() {
-        try (
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)
-        ) {
-            server.addClient(clientId, out); // Регистрируем клиента
+        try {
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
+
+            while (true) {
+                out.println("Enter your nickname: ");
+                nickname = in.readLine();
+                if (isNicknameUnique(nickname)) {
+                    ready = true;
+                    break;
+                } else {
+                    out.println("Nickname already in use. Please enter a different one.");
+                }
+            }
+
+            System.out.println(nickname + " joined the game.");
+            Server.broadcast(nickname + " has joined the game.");
+            Server.sendPlayerList();
+
+            Server.checkAndStartGame();
 
             String message;
             while ((message = in.readLine()) != null) {
-                System.out.println("Сообщение от клиента " + clientId + ": " + message);
-
-                // Обработка сообщения через Protocol
-                String response = Protocol.processMessage(clientId, message, server);
-                out.println(response);
+                System.out.println(nickname + ": " + message);
+                Server.broadcast(nickname + ": " + message);
             }
         } catch (IOException e) {
-            System.err.println("Клиент " + clientId + " отключился.");
+            System.out.println("Connection with " + nickname + " lost.");
         } finally {
-            server.removeClient(clientId); // Удаляем клиента
             try {
-                clientSocket.close();
+                socket.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
+            clients.remove(this);
+            Server.broadcast(nickname + " has left the game.");
+            Server.sendPlayerList();
+            Server.checkAndStartGame();
         }
+    }
+
+    public void sendMessage(String message) {
+        out.println(message);
+    }
+
+    public String getNickname() {
+        return nickname;
+    }
+
+    public boolean isReady() {
+        return ready;
+    }
+
+    private boolean isNicknameUnique(String nickname) {
+        for (ClientHandler client : clients) {
+            if (client != this && client.getNickname() != null && client.getNickname().equalsIgnoreCase(nickname)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
