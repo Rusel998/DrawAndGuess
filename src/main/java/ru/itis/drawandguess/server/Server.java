@@ -22,10 +22,6 @@ public class Server {
                 ClientHandler clientHandler = new ClientHandler(clientSocket, clients);
                 clients.add(clientHandler);
                 new Thread(clientHandler).start();
-
-                if (clients.size() >= 2 && currentDrawer == null) {
-                    startGame();
-                }
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -38,12 +34,18 @@ public class Server {
         }
     }
 
-    public static void sendPlayerList() {
-        StringBuilder playerList = new StringBuilder("Connected players: ");
+    public static void broadcastDrawCommand(String command, ClientHandler sender) {
         for (ClientHandler client : clients) {
-            playerList.append(client.getNickname()).append(", ");
+            if (client != sender) {
+                client.sendMessage(command);
+            }
         }
-        broadcast(playerList.toString());
+    }
+
+    public static synchronized void checkAndStartGame() {
+        if (clients.size() >= 2 && clients.stream().allMatch(ClientHandler::isReady) && currentDrawer == null) {
+            startGame();
+        }
     }
 
     private static void startGame() {
@@ -59,20 +61,7 @@ public class Server {
             }
         }
 
-        broadcast("Game started! " + currentDrawer.getNickname() + " is drawing.");
         System.out.println("Drawer: " + currentDrawer.getNickname() + ", Word: " + currentWord);
-    }
-
-    public static void handleDrawMessage(String message, ClientHandler sender) {
-        for (ClientHandler client : clients) {
-            if (client != sender) {
-                client.sendMessage(message);
-            }
-        }
-    }
-
-    public static boolean isDrawer(ClientHandler client) {
-        return client == currentDrawer;
     }
 
     public static void nextRound() {
@@ -96,84 +85,18 @@ public class Server {
             }
         }
 
-        broadcast("New round started! " + currentDrawer.getNickname() + " is drawing.");
         System.out.println("Drawer: " + currentDrawer.getNickname() + ", Word: " + currentWord);
     }
-}
 
-class ClientHandler implements Runnable {
-    private Socket socket;
-    private BufferedReader in;
-    private PrintWriter out;
-    private String nickname;
-    private List<ClientHandler> clients;
-
-    public ClientHandler(Socket socket, List<ClientHandler> clients) {
-        this.socket = socket;
-        this.clients = clients;
-    }
-
-    @Override
-    public void run() {
-        try {
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out = new PrintWriter(socket.getOutputStream(), true);
-
-            while (true) {
-                out.println("Enter your nickname: ");
-                nickname = in.readLine();
-                if (isNicknameUnique(nickname)) {
-                    break;
-                } else {
-                    out.println("Nickname already in use. Please enter a different one.");
-                }
-            }
-
-            System.out.println(nickname + " joined the game.");
-            Server.broadcast(nickname + " has joined the game.");
-            Server.sendPlayerList();
-
-            String message;
-            while ((message = in.readLine()) != null) {
-                if (message.startsWith("DRAW:")) {
-                    if (Server.isDrawer(this)) {
-                        Server.handleDrawMessage(message, this);
-                    } else {
-                        sendMessage("You are not the drawer!");
-                    }
-                } else {
-                    System.out.println(nickname + ": " + message);
-                    Server.broadcast(nickname + ": " + message);
-                }
-            }
-        } catch (IOException e) {
-            System.out.println("Connection with " + nickname + " lost.");
-        } finally {
-            try {
-                socket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            clients.remove(this);
-            Server.broadcast(nickname + " has left the game.");
-            Server.sendPlayerList();
-        }
-    }
-
-    public void sendMessage(String message) {
-        out.println(message);
-    }
-
-    public String getNickname() {
-        return nickname;
-    }
-
-    private boolean isNicknameUnique(String nickname) {
+    public static void sendPlayerList() {
+        StringBuilder playerList = new StringBuilder("Connected players: ");
         for (ClientHandler client : clients) {
-            if (client != this && client.getNickname() != null && client.getNickname().equalsIgnoreCase(nickname)) {
-                return false;
-            }
+            playerList.append(client.getNickname()).append(", ");
         }
-        return true;
+        if (playerList.length() > 2) { // Удалить лишнюю запятую и пробел
+            playerList.setLength(playerList.length() - 2);
+        }
+        broadcast(playerList.toString());
     }
+
 }
