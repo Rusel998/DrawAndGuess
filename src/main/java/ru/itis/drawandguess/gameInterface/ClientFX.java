@@ -25,6 +25,7 @@ public class ClientFX extends Application {
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
+    private boolean isDrawer = false;
 
     @Override
     public void start(Stage primaryStage) {
@@ -75,10 +76,6 @@ public class ClientFX extends Application {
         root.setTop(topPanel);
         root.setCenter(mainSplitPane);
 
-        // Bind canvas size to its container and redraw background on resize
-        canvasPane.widthProperty().addListener((obs, oldVal, newVal) -> adjustCanvasSize(gc, newVal.doubleValue(), canvasPane.getHeight()));
-        canvasPane.heightProperty().addListener((obs, oldVal, newVal) -> adjustCanvasSize(gc, canvasPane.getWidth(), newVal.doubleValue()));
-
         connectButton.setOnAction(e -> connectToServer());
         sendButton.setOnAction(e -> sendMessage());
         messageField.setOnAction(e -> sendMessage());
@@ -89,26 +86,30 @@ public class ClientFX extends Application {
 
     private void setupDrawing(GraphicsContext gc) {
         canvas.addEventHandler(MouseEvent.MOUSE_PRESSED, e -> {
-            gc.beginPath();
-            gc.moveTo(e.getX(), e.getY());
-            gc.stroke();
+            if (isDrawer) {
+                gc.beginPath();
+                gc.moveTo(e.getX(), e.getY());
+                gc.stroke();
+
+                sendDrawMessage(e.getX(), e.getY(), e.getX(), e.getY());
+            }
         });
 
         canvas.addEventHandler(MouseEvent.MOUSE_DRAGGED, e -> {
-            gc.lineTo(e.getX(), e.getY());
-            gc.stroke();
+            if (isDrawer) {
+                gc.lineTo(e.getX(), e.getY());
+                gc.stroke();
+
+                sendDrawMessage(e.getX(), e.getY(), e.getX(), e.getY());
+            }
         });
     }
 
-    private void adjustCanvasSize(GraphicsContext gc, double newWidth, double newHeight) {
-        canvas.setWidth(newWidth);
-        canvas.setHeight(newHeight);
-        redrawCanvas(gc);
-    }
-
-    private void redrawCanvas(GraphicsContext gc) {
-        gc.setFill(Color.WHITE);
-        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+    private void sendDrawMessage(double startX, double startY, double endX, double endY) {
+        if (out != null) {
+            String message = String.format("DRAW:%f,%f,%f,%f", startX, startY, endX, endY);
+            out.println(message);
+        }
     }
 
     private void connectToServer() {
@@ -129,7 +130,14 @@ public class ClientFX extends Application {
                 try {
                     String serverMessage;
                     while ((serverMessage = in.readLine()) != null) {
-                        chatArea.appendText(serverMessage + "\n");
+                        if (serverMessage.startsWith("DRAW:")) {
+                            processDrawMessage(serverMessage.substring(5));
+                        } else if (serverMessage.startsWith("You are drawing.")) {
+                            isDrawer = true;
+                            wordLabel.setText(serverMessage.replace("You are drawing. Your word is: ", "Word to draw: "));
+                        } else {
+                            chatArea.appendText(serverMessage + "\n");
+                        }
                     }
                 } catch (IOException ex) {
                     chatArea.appendText("Disconnected from server.\n");
@@ -141,6 +149,26 @@ public class ClientFX extends Application {
             sendButton.setDisable(false);
         } catch (IOException ex) {
             showAlert("Error", "Unable to connect to server.");
+        }
+    }
+
+    private void processDrawMessage(String data) {
+        String[] parts = data.split(",");
+        if (parts.length == 4) {
+            try {
+                double startX = Double.parseDouble(parts[0]);
+                double startY = Double.parseDouble(parts[1]);
+                double endX = Double.parseDouble(parts[2]);
+                double endY = Double.parseDouble(parts[3]);
+
+                GraphicsContext gc = canvas.getGraphicsContext2D();
+                gc.beginPath();
+                gc.moveTo(startX, startY);
+                gc.lineTo(endX, endY);
+                gc.stroke();
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid DRAW message format: " + data);
+            }
         }
     }
 
