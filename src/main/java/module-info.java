@@ -8,6 +8,5 @@ module ru.itis.drawandguess {
 
     opens ru.itis.drawandguess to javafx.fxml;
     exports ru.itis.drawandguess.gameInterface to javafx.graphics;
-    opens ru.itis.drawandguess.client to javafx.fxml;
+    exports ru.itis.drawandguess;
 }
-
