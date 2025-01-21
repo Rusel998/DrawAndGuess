@@ -30,21 +30,17 @@ public class ClientFX extends Application {
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Draw & Guess Client");
 
-        // Chat area
         chatArea = new TextArea();
         chatArea.setEditable(false);
 
-        // Message field and send button
         messageField = new TextField();
         sendButton = new Button("Send");
         sendButton.setDisable(true);
 
-        // Nickname field and connect button
         nicknameField = new TextField();
         nicknameField.setPromptText("Enter your nickname");
         connectButton = new Button("Connect");
 
-        // Drawing canvas
         canvas = new Canvas(600, 400);
         GraphicsContext gc = canvas.getGraphicsContext2D();
         gc.setFill(Color.WHITE);
@@ -52,7 +48,6 @@ public class ClientFX extends Application {
 
         setupDrawing(gc);
 
-        // Word label
         wordLabel = new Label("Word to draw: [word here]");
         wordLabel.setStyle("-fx-background-color: lightgray; -fx-padding: 5px; -fx-font-size: 14px; -fx-alignment: center;");
         wordLabel.setMaxWidth(Double.MAX_VALUE);
@@ -75,10 +70,6 @@ public class ClientFX extends Application {
         root.setTop(topPanel);
         root.setCenter(mainSplitPane);
 
-        // Bind canvas size to its container and redraw background on resize
-        canvasPane.widthProperty().addListener((obs, oldVal, newVal) -> adjustCanvasSize(gc, newVal.doubleValue(), canvasPane.getHeight()));
-        canvasPane.heightProperty().addListener((obs, oldVal, newVal) -> adjustCanvasSize(gc, canvasPane.getWidth(), newVal.doubleValue()));
-
         connectButton.setOnAction(e -> connectToServer());
         sendButton.setOnAction(e -> sendMessage());
         messageField.setOnAction(e -> sendMessage());
@@ -92,23 +83,20 @@ public class ClientFX extends Application {
             gc.beginPath();
             gc.moveTo(e.getX(), e.getY());
             gc.stroke();
+            sendDrawCommand("PRESS " + e.getX() + " " + e.getY());
         });
 
         canvas.addEventHandler(MouseEvent.MOUSE_DRAGGED, e -> {
             gc.lineTo(e.getX(), e.getY());
             gc.stroke();
+            sendDrawCommand("DRAG " + e.getX() + " " + e.getY());
         });
     }
 
-    private void adjustCanvasSize(GraphicsContext gc, double newWidth, double newHeight) {
-        canvas.setWidth(newWidth);
-        canvas.setHeight(newHeight);
-        redrawCanvas(gc);
-    }
-
-    private void redrawCanvas(GraphicsContext gc) {
-        gc.setFill(Color.WHITE);
-        gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+    private void sendDrawCommand(String command) {
+        if (out != null) {
+            out.println(command);
+        }
     }
 
     private void connectToServer() {
@@ -129,7 +117,11 @@ public class ClientFX extends Application {
                 try {
                     String serverMessage;
                     while ((serverMessage = in.readLine()) != null) {
-                        chatArea.appendText(serverMessage + "\n");
+                        if (serverMessage.startsWith("DRAW")) {
+                            handleDrawCommand(serverMessage);
+                        } else {
+                            chatArea.appendText(serverMessage + "\n");
+                        }
                     }
                 } catch (IOException ex) {
                     chatArea.appendText("Disconnected from server.\n");
@@ -141,6 +133,22 @@ public class ClientFX extends Application {
             sendButton.setDisable(false);
         } catch (IOException ex) {
             showAlert("Error", "Unable to connect to server.");
+        }
+    }
+
+    private void handleDrawCommand(String command) {
+        String[] parts = command.split(" ");
+        GraphicsContext gc = canvas.getGraphicsContext2D();
+        switch (parts[1]) {
+            case "PRESS":
+                gc.beginPath();
+                gc.moveTo(Double.parseDouble(parts[2]), Double.parseDouble(parts[3]));
+                gc.stroke();
+                break;
+            case "DRAG":
+                gc.lineTo(Double.parseDouble(parts[2]), Double.parseDouble(parts[3]));
+                gc.stroke();
+                break;
         }
     }
 

@@ -7,7 +7,7 @@ import java.util.*;
 public class Server {
     private static final int PORT = 12345;
     private static List<ClientHandler> clients = new ArrayList<>();
-    private static List<String> words = Arrays.asList("apple", "banana", "cat", "dog", "elephant"); // Example word list
+    private static List<String> words = Arrays.asList("apple", "banana", "cat", "dog", "elephant");
     private static ClientHandler currentDrawer = null;
     private static String currentWord = null;
 
@@ -34,16 +34,15 @@ public class Server {
         }
     }
 
-    public static void sendPlayerList() {
-        StringBuilder playerList = new StringBuilder("Connected players: ");
+    public static void broadcastDrawCommand(String command, ClientHandler sender) {
         for (ClientHandler client : clients) {
-            playerList.append(client.getNickname()).append(", ");
+            if (client != sender) {
+                client.sendMessage(command);
+            }
         }
-        broadcast(playerList.toString());
     }
 
     public static synchronized void checkAndStartGame() {
-        // Check if all players are ready and there are at least two players
         if (clients.size() >= 2 && clients.stream().allMatch(ClientHandler::isReady) && currentDrawer == null) {
             startGame();
         }
@@ -88,4 +87,16 @@ public class Server {
 
         System.out.println("Drawer: " + currentDrawer.getNickname() + ", Word: " + currentWord);
     }
+
+    public static void sendPlayerList() {
+        StringBuilder playerList = new StringBuilder("Connected players: ");
+        for (ClientHandler client : clients) {
+            playerList.append(client.getNickname()).append(", ");
+        }
+        if (playerList.length() > 2) { // Удалить лишнюю запятую и пробел
+            playerList.setLength(playerList.length() - 2);
+        }
+        broadcast(playerList.toString());
+    }
+
 }

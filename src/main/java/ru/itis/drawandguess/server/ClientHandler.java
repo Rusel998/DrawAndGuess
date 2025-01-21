@@ -42,8 +42,12 @@ public class ClientHandler implements Runnable {
 
             String message;
             while ((message = in.readLine()) != null) {
-                System.out.println(nickname + ": " + message);
-                Server.broadcast(nickname + ": " + message);
+                if (message.startsWith("PRESS") || message.startsWith("DRAG")) {
+                    Server.broadcastDrawCommand("DRAW " + message, this);
+                } else {
+                    System.out.println(nickname + ": " + message);
+                    Server.broadcast(nickname + ": " + message);
+                }
             }
         } catch (IOException e) {
             System.out.println("Connection with " + nickname + " lost.");
