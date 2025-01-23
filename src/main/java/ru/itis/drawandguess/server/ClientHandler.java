@@ -24,7 +24,6 @@ public class ClientHandler implements Runnable {
             out = new PrintWriter(socket.getOutputStream(), true);
 
             while (true) {
-                out.println("Enter your nickname: ");
                 nickname = in.readLine();
                 if (isNicknameUnique(nickname)) {
                     ready = true;
@@ -47,6 +46,12 @@ public class ClientHandler implements Runnable {
                         Server.broadcastDrawCommand("DRAW " + message, this);
                     } else {
                         sendMessage("You cannot draw. You are not the drawer.");
+                    }
+                } else if (message.equals("CLEAR_REQUEST")) { // Обработка запроса на очистку холста
+                    if (this == Server.getCurrentDrawer()) {
+                        Server.broadcast("CLEAR_CANVAS");
+                    } else {
+                        sendMessage("You cannot clear the canvas. You are not the drawer.");
                     }
                 } else if (Server.getCurrentDrawer() != this) {
                     Server.handleGuess(message, this);

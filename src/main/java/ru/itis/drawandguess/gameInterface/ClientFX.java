@@ -20,6 +20,7 @@ public class ClientFX extends Application {
     private TextField nicknameField;
     private Button sendButton;
     private Button connectButton;
+    private Button clearButton; // Новая кнопка
     private Canvas canvas;
     private Label wordLabel;
 
@@ -42,6 +43,14 @@ public class ClientFX extends Application {
         nicknameField = new TextField();
         nicknameField.setPromptText("Enter your nickname");
         connectButton = new Button("Connect");
+
+        clearButton = new Button("Clear"); // Инициализация кнопки
+        clearButton.setDisable(true); // По умолчанию кнопка заблокирована
+        clearButton.setOnAction(e -> {
+            if (out != null) {
+                out.println("CLEAR_REQUEST"); // Отправляем запрос на очистку холста
+            }
+        });
 
         canvas = new Canvas(600, 400);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -66,7 +75,8 @@ public class ClientFX extends Application {
         mainSplitPane.getItems().addAll(chatBox, canvasBox);
         mainSplitPane.setDividerPositions(0.3);
 
-        VBox topPanel = new VBox(10, new HBox(10, new Label("Nickname:"), nicknameField, connectButton));
+        HBox topControls = new HBox(10, new Label("Nickname:"), nicknameField, connectButton, clearButton); // Добавлена кнопка Clear
+        VBox topPanel = new VBox(10, topControls);
 
         BorderPane root = new BorderPane();
         root.setTop(topPanel);
@@ -146,19 +156,22 @@ public class ClientFX extends Application {
             if (parts.length > 1) {
                 Platform.runLater(() -> {
                     isDrawer = true;
+                    clearButton.setDisable(false); // Включить кнопку Clear
                     wordLabel.setText("Word to draw: " + parts[1]);
                 });
             }
         } else if (serverMessage.startsWith("YOU_ARE_GUESSER")) {
             Platform.runLater(() -> {
                 isDrawer = false;
+                clearButton.setDisable(true); // Отключить кнопку Clear
                 wordLabel.setText("Guess the word!");
             });
+        } else if (serverMessage.equals("CLEAR_CANVAS")) {
+            clearCanvas();
         } else {
             Platform.runLater(() -> chatArea.appendText(serverMessage + "\n"));
         }
     }
-
 
     private void handleDrawCommand(String command) {
         String[] parts = command.split(" ");
@@ -182,6 +195,14 @@ public class ClientFX extends Application {
             out.println(message);
             messageField.clear();
         }
+    }
+
+    private void clearCanvas() {
+        Platform.runLater(() -> {
+            GraphicsContext gc = canvas.getGraphicsContext2D();
+            gc.setFill(Color.WHITE);
+            gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
+        });
     }
 
     private void showAlert(String title, String message) {
