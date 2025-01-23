@@ -2,6 +2,7 @@ package ru.itis.drawandguess.gameInterface;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -20,37 +21,136 @@ public class ClientFX extends Application {
     private TextField nicknameField;
     private Button sendButton;
     private Button connectButton;
-    private Button clearButton; // Новая кнопка
+    private Button clearButton;
+    private Button sendNicknameButton; // Новая кнопка
     private Canvas canvas;
     private Label wordLabel;
 
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
-    private boolean isDrawer = false; // Флаг, указывающий, может ли клиент рисовать
+    private boolean isDrawer = false;
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("Draw & Guess Client");
+        startWelcomeWindow(primaryStage);
+    }
+
+    private void startWelcomeWindow(Stage primaryStage) {
+        VBox welcomeLayout = new VBox(10);
+        welcomeLayout.setAlignment(Pos.CENTER);
+
+        Label title = new Label("Draw & Guess");
+        title.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
+
+        TextField joinCodeField = new TextField();
+        joinCodeField.setPromptText("Enter lobby password");
+        joinCodeField.setMaxWidth(200);
+
+        Button joinButton = new Button("Join Lobby");
+        joinButton.setOnAction(e -> {
+            String code = joinCodeField.getText();
+            if (!code.isEmpty()) {
+                connectToLobby(code);
+            } else {
+                showAlert("Error", "Please enter a lobby code.");
+            }
+        });
+
+        TextField passwordField = new TextField();
+        passwordField.setPromptText("Set a lobby password");
+        passwordField.setMaxWidth(200);
+
+        Spinner<Integer> playerCountSpinner = new Spinner<>();
+        playerCountSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(2, 4, 2));
+
+        Button createLobbyButton = new Button("Create Lobby");
+        createLobbyButton.setOnAction(e -> {
+            String password = passwordField.getText();
+            int maxPlayers = playerCountSpinner.getValue();
+            if (!password.isEmpty()) {
+                createLobby(password, maxPlayers);
+            } else {
+                showAlert("Error", "Please set a password.");
+            }
+        });
+
+        welcomeLayout.getChildren().addAll(
+                title,
+                new Label("Join an existing lobby:"),
+                joinCodeField,
+                joinButton,
+                new Label("Or create a new lobby:"),
+                passwordField,
+                new Label("Max players:"),
+                playerCountSpinner,
+                createLobbyButton
+        );
+
+        Scene scene = new Scene(welcomeLayout, 400, 400);
+        primaryStage.setScene(scene);
+        primaryStage.show();
+    }
+
+    private void connectToLobby(String password) {
+        try {
+            socket = new Socket("127.0.0.1", 12345);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
+
+            out.println("JOIN_LOBBY " + password);
+            String response = in.readLine();
+            if (response.equals("LOBBY_JOINED")) {
+                startGameUI();
+            } else {
+                showAlert("Error", "Failed to join lobby: " + response);
+            }
+        } catch (IOException ex) {
+            showAlert("Error", "Unable to connect to server.");
+        }
+    }
+
+    private void createLobby(String password, int maxPlayers) {
+        try {
+            socket = new Socket("127.0.0.1", 12345);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
+
+            out.println("CREATE_LOBBY " + password + " " + maxPlayers);
+            String response = in.readLine();
+            if (response.equals("LOBBY_CREATED")) {
+                startGameUI();
+            } else {
+                showAlert("Error", "Failed to create lobby: " + response);
+            }
+        } catch (IOException ex) {
+            showAlert("Error", "Unable to connect to server.");
+        }
+    }
+
+    private void startGameUI() {
+        Stage gameStage = new Stage();
+        gameStage.setTitle("Draw & Guess - Game");
 
         chatArea = new TextArea();
         chatArea.setEditable(false);
 
         messageField = new TextField();
+
         sendButton = new Button("Send");
-        sendButton.setDisable(true);
+        sendButton.setDisable(false);
+        sendButton.setOnAction(e -> sendMessage());
 
-        nicknameField = new TextField();
-        nicknameField.setPromptText("Enter your nickname");
-        connectButton = new Button("Connect");
-
-        clearButton = new Button("Clear"); // Инициализация кнопки
-        clearButton.setDisable(true); // По умолчанию кнопка заблокирована
+        clearButton = new Button("Clear");
+        clearButton.setDisable(true);
         clearButton.setOnAction(e -> {
             if (out != null) {
-                out.println("CLEAR_REQUEST"); // Отправляем запрос на очистку холста
+                out.println("CLEAR_REQUEST");
             }
         });
+
+        sendNicknameButton = new Button("Send Nickname");
+        sendNicknameButton.setOnAction(e -> sendNickname());
 
         canvas = new Canvas(600, 400);
         GraphicsContext gc = canvas.getGraphicsContext2D();
@@ -75,19 +175,22 @@ public class ClientFX extends Application {
         mainSplitPane.getItems().addAll(chatBox, canvasBox);
         mainSplitPane.setDividerPositions(0.3);
 
-        HBox topControls = new HBox(10, new Label("Nickname:"), nicknameField, connectButton, clearButton); // Добавлена кнопка Clear
+        if (nicknameField == null) {
+            nicknameField = new TextField();
+            nicknameField.setPromptText("Enter your nickname");
+        }
+
+        HBox topControls = new HBox(10, new Label("Nickname:"), nicknameField, sendNicknameButton, clearButton);
+
         VBox topPanel = new VBox(10, topControls);
 
         BorderPane root = new BorderPane();
         root.setTop(topPanel);
         root.setCenter(mainSplitPane);
 
-        connectButton.setOnAction(e -> connectToServer());
-        sendButton.setOnAction(e -> sendMessage());
-        messageField.setOnAction(e -> sendMessage());
-
-        primaryStage.setScene(new Scene(root, 900, 600));
-        primaryStage.show();
+        Scene scene = new Scene(root, 900, 600);
+        gameStage.setScene(scene);
+        gameStage.show();
     }
 
     private void setupDrawing(GraphicsContext gc) {
@@ -115,80 +218,6 @@ public class ClientFX extends Application {
         }
     }
 
-    private void connectToServer() {
-        String nickname = nicknameField.getText().trim();
-        if (nickname.isEmpty()) {
-            showAlert("Error", "Please enter a nickname.");
-            return;
-        }
-
-        try {
-            socket = new Socket("127.0.0.1", 12345);
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out = new PrintWriter(socket.getOutputStream(), true);
-
-            out.println(nickname);
-
-            new Thread(() -> {
-                try {
-                    String serverMessage;
-                    while ((serverMessage = in.readLine()) != null) {
-                        handleServerMessage(serverMessage);
-                    }
-                } catch (IOException ex) {
-                    chatArea.appendText("Disconnected from server.\n");
-                }
-            }).start();
-
-            nicknameField.setDisable(true);
-            connectButton.setDisable(true);
-            sendButton.setDisable(false);
-        } catch (IOException ex) {
-            showAlert("Error", "Unable to connect to server.");
-        }
-    }
-
-    private void handleServerMessage(String serverMessage) {
-        if (serverMessage.startsWith("DRAW")) {
-            handleDrawCommand(serverMessage);
-        } else if (serverMessage.startsWith("YOU_ARE_DRAWER")) {
-            String[] parts = serverMessage.split(" ", 2);
-            if (parts.length > 1) {
-                Platform.runLater(() -> {
-                    isDrawer = true;
-                    clearButton.setDisable(false); // Включить кнопку Clear
-                    wordLabel.setText("Word to draw: " + parts[1]);
-                });
-            }
-        } else if (serverMessage.startsWith("YOU_ARE_GUESSER")) {
-            Platform.runLater(() -> {
-                isDrawer = false;
-                clearButton.setDisable(true); // Отключить кнопку Clear
-                wordLabel.setText("Guess the word!");
-            });
-        } else if (serverMessage.equals("CLEAR_CANVAS")) {
-            clearCanvas();
-        } else {
-            Platform.runLater(() -> chatArea.appendText(serverMessage + "\n"));
-        }
-    }
-
-    private void handleDrawCommand(String command) {
-        String[] parts = command.split(" ");
-        GraphicsContext gc = canvas.getGraphicsContext2D();
-        switch (parts[1]) {
-            case "PRESS":
-                gc.beginPath();
-                gc.moveTo(Double.parseDouble(parts[2]), Double.parseDouble(parts[3]));
-                gc.stroke();
-                break;
-            case "DRAG":
-                gc.lineTo(Double.parseDouble(parts[2]), Double.parseDouble(parts[3]));
-                gc.stroke();
-                break;
-        }
-    }
-
     private void sendMessage() {
         String message = messageField.getText().trim();
         if (!message.isEmpty() && out != null) {
@@ -197,12 +226,15 @@ public class ClientFX extends Application {
         }
     }
 
-    private void clearCanvas() {
-        Platform.runLater(() -> {
-            GraphicsContext gc = canvas.getGraphicsContext2D();
-            gc.setFill(Color.WHITE);
-            gc.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
-        });
+    private void sendNickname() {
+        String nickname = nicknameField.getText().trim();
+        if (!nickname.isEmpty() && out != null) {
+            out.println("NICKNAME " + nickname);
+            nicknameField.setDisable(true);
+            sendNicknameButton.setDisable(true);
+        } else {
+            showAlert("Error", "Please enter a valid nickname.");
+        }
     }
 
     private void showAlert(String title, String message) {

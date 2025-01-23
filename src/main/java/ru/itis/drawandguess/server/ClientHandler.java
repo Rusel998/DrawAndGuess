@@ -1,6 +1,9 @@
 package ru.itis.drawandguess.server;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.*;
 
@@ -24,54 +27,44 @@ public class ClientHandler implements Runnable {
             out = new PrintWriter(socket.getOutputStream(), true);
 
             while (true) {
-                nickname = in.readLine();
-                if (isNicknameUnique(nickname)) {
-                    ready = true;
-                    break;
-                } else {
-                    out.println("Nickname already in use. Please enter a different one.");
+                String message = in.readLine();
+                if (message == null) {
+                    return;
                 }
-            }
 
-            System.out.println(nickname + " joined the game.");
-            Server.broadcast(nickname + " has joined the game.");
-            Server.sendPlayerList();
-
-            Server.checkAndStartGame();
-
-            String message;
-            while ((message = in.readLine()) != null) {
-                if (message.startsWith("PRESS") || message.startsWith("DRAG")) {
-                    if (this == Server.getCurrentDrawer()) {
-                        Server.broadcastDrawCommand("DRAW " + message, this);
+                if (message.startsWith("CREATE_LOBBY")) {
+                    String[] parts = message.split(" ", 3);
+                    String password = parts[1];
+                    int maxPlayers = Integer.parseInt(parts[2]);
+                    if (Server.createLobby(password, maxPlayers, this)) {
+                        out.println("LOBBY_CREATED");
                     } else {
-                        sendMessage("You cannot draw. You are not the drawer.");
+                        out.println("ERROR: Could not create lobby.");
                     }
-                } else if (message.equals("CLEAR_REQUEST")) { // Обработка запроса на очистку холста
-                    if (this == Server.getCurrentDrawer()) {
-                        Server.broadcast("CLEAR_CANVAS");
+                } else if (message.startsWith("JOIN_LOBBY")) {
+                    String password = message.split(" ", 2)[1];
+                    if (Server.joinLobby(password, this)) {
+                        out.println("LOBBY_JOINED");
                     } else {
-                        sendMessage("You cannot clear the canvas. You are not the drawer.");
+                        out.println("ERROR: Could not join lobby.");
                     }
-                } else if (Server.getCurrentDrawer() != this) {
-                    Server.handleGuess(message, this);
+                } else if (message.startsWith("NICKNAME")) {
+                    this.nickname = message.substring(9); // Example: NICKNAME player1
+                    ready = true;
                 } else {
-                    sendMessage("You are the drawer. You cannot guess.");
+                    Server.broadcast(message, this);
                 }
             }
         } catch (IOException e) {
-            System.out.println("Connection with " + nickname + " lost.");
+            e.printStackTrace();
         } finally {
-            try {
-                socket.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            clients.remove(this);
-            Server.broadcast(nickname + " has left the game.");
-            Server.sendPlayerList();
-            Server.checkAndStartGame();
+            disconnect();
         }
+    }
+
+    private void disconnect() {
+        clients.remove(this);
+        Server.broadcast(nickname + " has left the game.", this);
     }
 
     public void sendMessage(String message) {
@@ -84,14 +77,5 @@ public class ClientHandler implements Runnable {
 
     public boolean isReady() {
         return ready;
-    }
-
-    private boolean isNicknameUnique(String nickname) {
-        for (ClientHandler client : clients) {
-            if (client != this && client.getNickname() != null && client.getNickname().equalsIgnoreCase(nickname)) {
-                return false;
-            }
-        }
-        return true;
     }
 }
