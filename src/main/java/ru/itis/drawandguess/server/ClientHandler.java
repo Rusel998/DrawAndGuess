@@ -43,10 +43,15 @@ public class ClientHandler implements Runnable {
             String message;
             while ((message = in.readLine()) != null) {
                 if (message.startsWith("PRESS") || message.startsWith("DRAG")) {
-                    Server.broadcastDrawCommand("DRAW " + message, this);
+                    if (this == Server.getCurrentDrawer()) {
+                        Server.broadcastDrawCommand("DRAW " + message, this);
+                    } else {
+                        sendMessage("You cannot draw. You are not the drawer.");
+                    }
+                } else if (Server.getCurrentDrawer() != this) {
+                    Server.handleGuess(message, this);
                 } else {
-                    System.out.println(nickname + ": " + message);
-                    Server.broadcast(nickname + ": " + message);
+                    sendMessage("You are the drawer. You cannot guess.");
                 }
             }
         } catch (IOException e) {
