@@ -1,6 +1,7 @@
 package ru.itis.drawandguess.gameInterface;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -25,6 +26,7 @@ public class ClientFX extends Application {
     private Socket socket;
     private BufferedReader in;
     private PrintWriter out;
+    private boolean isDrawer = false; // Флаг, указывающий, может ли клиент рисовать
 
     @Override
     public void start(Stage primaryStage) {
@@ -48,7 +50,7 @@ public class ClientFX extends Application {
 
         setupDrawing(gc);
 
-        wordLabel = new Label("Word to draw: [word here]");
+        wordLabel = new Label("Waiting for the game to start...");
         wordLabel.setStyle("-fx-background-color: lightgray; -fx-padding: 5px; -fx-font-size: 14px; -fx-alignment: center;");
         wordLabel.setMaxWidth(Double.MAX_VALUE);
 
@@ -80,16 +82,20 @@ public class ClientFX extends Application {
 
     private void setupDrawing(GraphicsContext gc) {
         canvas.addEventHandler(MouseEvent.MOUSE_PRESSED, e -> {
-            gc.beginPath();
-            gc.moveTo(e.getX(), e.getY());
-            gc.stroke();
-            sendDrawCommand("PRESS " + e.getX() + " " + e.getY());
+            if (isDrawer) {
+                gc.beginPath();
+                gc.moveTo(e.getX(), e.getY());
+                gc.stroke();
+                sendDrawCommand("PRESS " + e.getX() + " " + e.getY());
+            }
         });
 
         canvas.addEventHandler(MouseEvent.MOUSE_DRAGGED, e -> {
-            gc.lineTo(e.getX(), e.getY());
-            gc.stroke();
-            sendDrawCommand("DRAG " + e.getX() + " " + e.getY());
+            if (isDrawer) {
+                gc.lineTo(e.getX(), e.getY());
+                gc.stroke();
+                sendDrawCommand("DRAG " + e.getX() + " " + e.getY());
+            }
         });
     }
 
@@ -117,11 +123,7 @@ public class ClientFX extends Application {
                 try {
                     String serverMessage;
                     while ((serverMessage = in.readLine()) != null) {
-                        if (serverMessage.startsWith("DRAW")) {
-                            handleDrawCommand(serverMessage);
-                        } else {
-                            chatArea.appendText(serverMessage + "\n");
-                        }
+                        handleServerMessage(serverMessage);
                     }
                 } catch (IOException ex) {
                     chatArea.appendText("Disconnected from server.\n");
@@ -135,6 +137,28 @@ public class ClientFX extends Application {
             showAlert("Error", "Unable to connect to server.");
         }
     }
+
+    private void handleServerMessage(String serverMessage) {
+        if (serverMessage.startsWith("DRAW")) {
+            handleDrawCommand(serverMessage);
+        } else if (serverMessage.startsWith("YOU_ARE_DRAWER")) {
+            String[] parts = serverMessage.split(" ", 2);
+            if (parts.length > 1) {
+                Platform.runLater(() -> {
+                    isDrawer = true;
+                    wordLabel.setText("Word to draw: " + parts[1]);
+                });
+            }
+        } else if (serverMessage.startsWith("YOU_ARE_GUESSER")) {
+            Platform.runLater(() -> {
+                isDrawer = false;
+                wordLabel.setText("Guess the word!");
+            });
+        } else {
+            Platform.runLater(() -> chatArea.appendText(serverMessage + "\n"));
+        }
+    }
+
 
     private void handleDrawCommand(String command) {
         String[] parts = command.split(" ");
