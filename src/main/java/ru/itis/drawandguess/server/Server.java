@@ -17,6 +17,11 @@ public class Server {
     private static ScheduledExecutorService timerExecutor = Executors.newSingleThreadScheduledExecutor();
     private static ScheduledFuture<?> currentTimer;
 
+    // ------------------ Новые поля для лобби ------------------
+    private static boolean lobbyCreated = false;
+    private static String lobbyPassword = null;
+    private static int maxPlayers = 0;
+
     public static void main(String[] args) {
         words = loadWordsFromFile();
         if (words.isEmpty()) {
@@ -31,9 +36,8 @@ public class Server {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("New client connected: " + clientSocket.getInetAddress());
 
+                // Каждый раз создаём новый ClientHandler
                 ClientHandler clientHandler = new ClientHandler(clientSocket, clients);
-                clients.add(clientHandler);
-                scores.put(clientHandler, 0);
                 new Thread(clientHandler).start();
             }
         } catch (IOException e) {
@@ -68,9 +72,20 @@ public class Server {
         }
     }
 
+    // -----------------------------------------------------------
+    //           ЛОГИКА ЛОББИ + ЛОГИКА ИГРЫ
+    // -----------------------------------------------------------
+
+    /**
+     * Проверяем, можно ли начать игру (если набралось нужное число игроков и лобби создано).
+     * В исходном коде было: если клиентов >=2 и все готовы. Здесь упрощённо:
+     * Начинаем игру, если число клиентов == maxPlayers (которое указал создающий).
+     */
     public static synchronized void checkAndStartGame() {
-        if (clients.size() >= 2 && clients.stream().allMatch(ClientHandler::isReady) && currentDrawer == null) {
-            totalRounds = clients.size();
+        // Если игра ещё не идёт (currentDrawer == null) и лобби создано
+        // и уже набралось именно maxPlayers подключённых клиентов:
+        if (lobbyCreated && currentDrawer == null && clients.size() == maxPlayers) {
+            totalRounds = clients.size(); // столько раундов, сколько игроков
             currentRound = 1;
             startGame();
         }
@@ -160,11 +175,37 @@ public class Server {
     private static String getScoreBoard() {
         StringBuilder scoreBoard = new StringBuilder();
         for (Map.Entry<ClientHandler, Integer> entry : scores.entrySet()) {
-            scoreBoard.append(entry.getKey().getNickname()).append(": ").append(entry.getValue()).append(" points, ");
+            scoreBoard.append(entry.getKey().getNickname()).append(": ")
+                    .append(entry.getValue()).append(" points, ");
         }
         if (scoreBoard.length() > 2) {
             scoreBoard.setLength(scoreBoard.length() - 2);
         }
         return scoreBoard.toString();
+    }
+
+    // Геттеры и сеттеры для лобби
+    public static boolean isLobbyCreated() {
+        return lobbyCreated;
+    }
+
+    public static void createLobby(String password, int maxPlayersCount) {
+        lobbyCreated = true;
+        lobbyPassword = password;
+        maxPlayers = maxPlayersCount;
+    }
+
+    public static boolean checkLobbyPassword(String password) {
+        return lobbyPassword != null && lobbyPassword.equals(password);
+    }
+
+    public static int getMaxPlayers() {
+        return maxPlayers;
+    }
+
+    // Когда клиент успешно зашёл, добавляем очки (по умолчанию 0)
+    public static void addClient(ClientHandler clientHandler) {
+        clients.add(clientHandler);
+        scores.put(clientHandler, 0);
     }
 }
